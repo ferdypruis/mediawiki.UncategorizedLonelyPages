@@ -1,0 +1,136 @@
+Index: includes/AutoLoader.php
+===================================================================
+--- includes/AutoLoader.php  (revision 385)
++++ includes/AutoLoader.php	(working copy)
+@@ -504,6 +504,7 @@
+ 	'SpecialVersion' => 'includes/specials/SpecialVersion.php',
+ 	'UncategorizedCategoriesPage' => 'includes/specials/SpecialUncategorizedcategories.php',
+ 	'UncategorizedPagesPage' => 'includes/specials/SpecialUncategorizedpages.php',
++	'UncategorizedLonelyPagesPage' => 'includes/specials/SpecialUncategorizedLonelypages.php',
+ 	'UncategorizedTemplatesPage' => 'includes/specials/SpecialUncategorizedtemplates.php',
+ 	'UndeleteForm' => 'includes/specials/SpecialUndelete.php',
+ 	'UnusedCategoriesPage' => 'includes/specials/SpecialUnusedcategories.php',
+Index: includes/DefaultSettings.php
+===================================================================
+--- includes/DefaultSettings.php	(revision 385)
++++ includes/DefaultSettings.php	(working copy)
+@@ -2995,6 +2995,7 @@
+ 	'BrokenRedirects'           => 'maintenance',
+ 	'Lonelypages'               => 'maintenance',
+ 	'Uncategorizedpages'        => 'maintenance',
++	'UncategorizedLonelypages'        => 'maintenance',
+ 	'Uncategorizedcategories'   => 'maintenance',
+ 	'Uncategorizedimages'       => 'maintenance',
+ 	'Uncategorizedtemplates'    => 'maintenance',
+Index: includes/QueryPage.php
+===================================================================
+--- includes/QueryPage.php	(revision 385)
++++ includes/QueryPage.php	(working copy)
+@@ -35,6 +35,7 @@
+ 	array( 'ShortPagesPage',                'Shortpages'                    ),
+ 	array( 'UncategorizedCategoriesPage',   'Uncategorizedcategories'       ),
+ 	array( 'UncategorizedPagesPage',        'Uncategorizedpages'            ),
++	array( 'UncategorizedLonelyPagesPage',  'UncategorizedLonelypages'            ),
+ 	array( 'UncategorizedImagesPage',       'Uncategorizedimages' 			),
+ 	array( 'UncategorizedTemplatesPage',	'Uncategorizedtemplates'		),
+ 	array( 'UnusedCategoriesPage',          'Unusedcategories'              ),
+Index: includes/SpecialPage.php
+===================================================================
+--- includes/SpecialPage.php	(revision 385)
++++ includes/SpecialPage.php	(working copy)
+@@ -95,6 +95,7 @@
+ 		'Uncategorizedcategories'   => array( 'SpecialPage', 'Uncategorizedcategories' ),	
+ 		'Uncategorizedimages'       => array( 'SpecialPage', 'Uncategorizedimages' ),	
+ 		'Uncategorizedpages'        => array( 'SpecialPage', 'Uncategorizedpages' ),	
++		'UncategorizedLonelypages'        => array( 'SpecialPage', 'UncategorizedLonelypages' ),
+ 		'Uncategorizedtemplates'    => array( 'SpecialPage', 'Uncategorizedtemplates' ),
+ 		'Unusedcategories'          => array( 'SpecialPage', 'Unusedcategories' ),
+ 		'Unusedimages'              => array( 'SpecialPage', 'Unusedimages' ),		
+Index: includes/specials/SpecialUncategorizedLonelypages.php
+===================================================================
+--- includes/specials/SpecialUncategorizedLonelypages.php	(revision 0)
++++ includes/specials/SpecialUncategorizedLonelypages.php	(working copy)
+@@ -0,0 +1,61 @@
++<?php
++/**
++ * @file
++ * @ingroup SpecialPage
++ */
++
++/**
++ * A special page looking for articles without any category and with no article linking to them,
++ * thus being lonely.
++ * @ingroup SpecialPage
++ */
++class UncategorizedLonelyPagesPage extends PageQueryPage {
++
++	function getName() {
++		return "UncategorizedLonelypages";
++	}
++	function getPageHeader() {
++		return wfMsgExt( 'uncategorizedlonelypagestext', array( 'parse' ) );
++	}
++
++	function sortDescending() {
++		return false;
++	}
++
++	function isExpensive() {
++		return true;
++	}
++	function isSyndicated() { return false; }
++
++	function getSQL() {
++		$dbr = wfGetDB( DB_SLAVE );
++		list( $page, $pagelinks, $templatelinks, $categorylinks ) = $dbr->tableNamesN( 'page', 'pagelinks', 'templatelinks', 'categorylinks' );
++		$name = $dbr->addQuotes( $this->getName() );
++
++		return "SELECT
++				 $name as type,
++				 page_namespace AS namespace,
++				 page_title     AS title,
++				 page_title     AS value
++			FROM $page
++			LEFT JOIN $pagelinks ON page_namespace = pl_namespace AND page_title = pl_title
++			LEFT JOIN $templatelinks ON page_namespace = tl_namespace AND page_title = tl_title
++			LEFT JOIN $categorylinks ON page_id = cl_from
++			WHERE pl_namespace IS NULL
++				AND cl_from IS NULL
++				AND page_namespace = " . NS_MAIN . "
++				AND page_is_redirect = 0
++				AND tl_namespace IS NULL";
++	}
++}
++
++/**
++ * Constructor
++ */
++function wfSpecialUncategorizedLonelypages() {
++	list( $limit, $offset ) = wfCheckLimits();
++
++	$lpp = new UncategorizedLonelyPagesPage();
++
++	return $lpp->doQuery( $offset, $limit );
++}
+Index: languages/messages/MessagesEn.php
+===================================================================
+--- languages/messages/MessagesEn.php	(revision 385)
++++ languages/messages/MessagesEn.php	(working copy)
+@@ -368,6 +368,7 @@
+ 	'Randompage'                => array( 'Random', 'RandomPage' ),
+ 	'Lonelypages'               => array( 'LonelyPages', 'OrphanedPages' ),
+ 	'Uncategorizedpages'        => array( 'UncategorizedPages' ),
++	'UncategorizedLonelypages'        => array( 'UncategorizedLonelyPages' ),
+ 	'Uncategorizedcategories'   => array( 'UncategorizedCategories' ),
+ 	'Uncategorizedimages'       => array( 'UncategorizedFiles', 'UncategorizedImages' ),
+ 	'Uncategorizedtemplates'    => array( 'UncategorizedTemplates' ),
+@@ -2125,6 +2126,9 @@
+ 'lonelypagestext'                 => 'The following pages are not linked from or transcluded into other pages in {{SITENAME}}.',
+ 'uncategorizedpages'              => 'Uncategorized pages',
+ 'uncategorizedpages-summary'      => '', # do not translate or duplicate this message to other languages
++'uncategorizedlonelypages'         => 'Uncategorized orphaned pages',
++'uncategorizedlonelypages-summary' => '', # do not translate or duplicate this message to other languages
++'uncategorizedlonelypagestext'    => 'The following pages have no category and are not linked from or transcluded into other pages in {{SITENAME}}.',
+ 'uncategorizedcategories'         => 'Uncategorized categories',
+ 'uncategorizedcategories-summary' => '', # do not translate or duplicate this message to other languages
+ 'uncategorizedimages'             => 'Uncategorized files',
